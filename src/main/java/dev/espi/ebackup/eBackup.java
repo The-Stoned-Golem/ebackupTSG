@@ -1,25 +1,26 @@
 package dev.espi.ebackup;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.TabExecutor;
 import org.bukkit.configuration.InvalidConfigurationException;
-import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
-import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.Listener;
-import org.bukkit.entity.Player;
-
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 /*
    Copyright 2020 EspiDev
@@ -45,6 +46,7 @@ public class eBackup extends JavaPlugin implements CommandExecutor, Listener, Ta
     AtomicBoolean isInUpload = new AtomicBoolean(false);
 
     // config options
+    boolean crontaskEnabled;
     String crontask, backupFormat, backupDateFormat;
     File backupPath;
     int maxBackups;
@@ -85,7 +87,8 @@ public class eBackup extends JavaPlugin implements CommandExecutor, Listener, Ta
         getServer().getPluginManager().registerEvents(this, this);
 
         // load config data
-        crontask = getConfig().getString("crontask");
+        crontask = getConfig().getString("crontask.schedule");
+        crontaskEnabled = getConfig().getBoolean("crontask.enabled");
         backupFormat = getConfig().getString("backup-format");
         backupDateFormat = getConfig().getString("backup-date-format");
         backupPath = new File(getConfig().getString("backup-path"));
@@ -126,22 +129,27 @@ public class eBackup extends JavaPlugin implements CommandExecutor, Listener, Ta
             bukkitCronTask.cancel();
 
         // start cron task
-        CronUtil.checkCron();
-        bukkitCronTask = Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
-            if (CronUtil.run()) {
-                if (isInBackup.get()) {
-                    getLogger().warning("A backup was scheduled to happen now, but a backup was detected to be in progress. Skipping...");
-                } else if (onlyBackupIfPlayersWereOn && !playersWereOnSinceLastBackup.get()) {
-                    getLogger().info("No players were detected to have joined since the last backup or server start, skipping backup...");
-                } else {
-                    BackupUtil.doBackup(true);
+        if (crontaskEnabled) {
+            getLogger().info("Enabled cron task");
+            CronUtil.checkCron();
+            bukkitCronTask = Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
+                if (CronUtil.run()) {
+                    if (isInBackup.get()) {
+                        getLogger().warning("A backup was scheduled to happen now, but a backup was detected to be in progress. Skipping...");
+                    } else if (onlyBackupIfPlayersWereOn && !playersWereOnSinceLastBackup.get()) {
+                        getLogger().info("No players were detected to have joined since the last backup or server start, skipping backup...");
+                    } else {
+                        BackupUtil.doBackup(true);
 
-                    if (Bukkit.getServer().getOnlinePlayers().size() == 0) {
-                        playersWereOnSinceLastBackup.set(false);
+                        if (Bukkit.getServer().getOnlinePlayers().size() == 0) {
+                            playersWereOnSinceLastBackup.set(false);
+                        }
                     }
                 }
-            }
-        }, 20, 20);
+            }, 20, 20);
+        } else {
+            getLogger().info("Cron task is disabled");
+        }
     }
 
     @Override
